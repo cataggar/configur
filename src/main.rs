@@ -23,11 +23,9 @@ fn list_yml_files(source: &Utf8Path) -> Vec<Utf8PathBuf> {
     let source = source.to_string();
     let mut files = Vec::new();
     if let Ok(paths) = glob(&format!("{source}/**/*.yml")) {
-        for path in paths {
-            if let Ok(path) = path {
-                if let Ok(path) = Utf8PathBuf::from_path_buf(path) {
-                    files.push(path);
-                }
+        for path in paths.flatten() {
+            if let Ok(path) = Utf8PathBuf::from_path_buf(path) {
+                files.push(path);
             }
         }
     }
