@@ -9,4 +9,5 @@ camino = "1.1.6"
 clap = { version = "4.3.23", features = ["derive"] }
 glob = "0.3.1"
 serde_json = "1.0.105"
+serde_json_merge = { version = "0.0.4", features = ["merge", "sort"] }
 serde_yaml = "0.9.25"

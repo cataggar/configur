@@ -3,6 +3,8 @@ use anyhow::Result;
 use camino::*;
 use clap::{Parser, Subcommand};
 use glob::glob;
+use serde_json::json;
+use serde_json_merge::*;
 use std::{collections::BTreeMap, str::FromStr};
 
 #[derive(Parser)]
@@ -66,32 +68,34 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|(k, v)| (k.as_path(), v.clone()))
                 .collect();
-            for (dir, files) in &dirs_files {
-                // let dir = dir.strip_prefix(&source)?;
-                println!("\nDir: {dir}");
-                for file in files {
-                    // let file = file.strip_prefix(&source)?;
-                    println!("File: {file}", file = file);
-                }
-            }
 
             let dirs = dirs_files.keys();
             for dir in dirs {
-                // let dir = dir.strip_prefix(&source)?;
-                println!("Dir: {dir}");
+                let dump_json_path = target.join(dir).join("dump2.json");
+                println!("dump_json_path: {dump_json_path}");
+                let mut dump_json = json!({});
+
+                let mut input_yml_paths = Vec::new();
                 let mut ancestors = dir.ancestors().into_iter().collect::<Vec<_>>();
                 ancestors.reverse();
                 for ancestor in ancestors {
-                    println!("Ancestor: {ancestor}");
-                    // let ancestor_full = source.join(ancestor);
-                    // println!("Ancestor full: {ancestor_full}");
                     if let Some(dir_files) = dirs_files.get(ancestor) {
                         for file in dir_files {
-                            // let file = file.strip_prefix(&source)?;
-                            println!("Input file: {file}", file = file);
+                            // println!("input file: {file}");
+                            input_yml_paths.push(file);
                         }
                     }
                 }
+                for input_yml_path in input_yml_paths {
+                    // println!("input_yml_path: {input_yml_path}");
+                    let input_yml_path = source.join(input_yml_path);
+                    let json: serde_json::Value =
+                        serde_yaml::from_slice(&std::fs::read(&input_yml_path)?)
+                            .with_context(|| format!("reading {input_yml_path}"))?;
+                    dump_json = dump_json.merged_recursive::<Dfs>(&json);
+                }
+                dump_json.sort_keys();
+                std::fs::write(&dump_json_path, serde_json::to_string_pretty(&dump_json)?)?;
             }
         }
         None => {}
