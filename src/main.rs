@@ -20,14 +20,20 @@ enum Commands {
 }
 
 fn list_yml_files(source: &Utf8Path) -> Vec<Utf8PathBuf> {
+    let exists = source.exists();
+    println!("source: {source}, exists: {exists}");
     let source = source.to_string();
     let mut files = Vec::new();
-    if let Ok(paths) = glob(&format!("{source}/**/*.yml")) {
-        for path in paths.flatten() {
-            if let Ok(path) = Utf8PathBuf::from_path_buf(path) {
-                files.push(path);
+    match glob(&format!("{source}/**/*.yml")) {
+        Ok(paths) => {
+            for path in paths.flatten() {
+                match Utf8PathBuf::from_path_buf(path) {
+                    Ok(path) => files.push(path),
+                    Err(e) => println!("{:?}", e),
+                }
             }
         }
+        Err(e) => println!("{:?}", e),
     }
     files
 }
