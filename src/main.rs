@@ -16,11 +16,13 @@ fn main() -> Result<()> {
     println!("exists: {exists}");
     let is_dir = path.is_dir();
     println!("is_dir: {is_dir}");
-    let files = path.read_dir();
-    match files {
+    let paths = path.read_dir();
+    match paths {
         Ok(paths) => {
-            for path in paths {
-                println!("file: {path:?}");
+            let dir_entries = paths.into_iter().collect::<Vec<_>>();
+            println!("# of dir entries: {}", dir_entries.len());
+            for path in dir_entries {
+                println!("dir entry: {path:?}");
             }
         }
         Err(e) => println!("{:?}", e),
