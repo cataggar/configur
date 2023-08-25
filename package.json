@@ -1,6 +1,6 @@
 {
     "name": "configur",
-    "version": "0.1.0",
+    "version": "20230825a",
     "description": "transforms configuration files",
     "main": "main.js",
     "type": "module",
