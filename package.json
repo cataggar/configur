@@ -1,6 +1,6 @@
 {
-    "name": "configur",
-    "version": "20230825a",
+    "name": "@cataggar/configur",
+    "version": "0.1.8",
     "description": "transforms configuration files",
     "main": "main.js",
     "type": "module",
@@ -13,6 +13,6 @@
       "target/wasm32-wasi/release/configur.wasm"
     ],
     "bin": {
-      "configur": "main.js"
+      "configur": "configur.js"
     }
   }
