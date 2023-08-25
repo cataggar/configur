@@ -1,3 +1,4 @@
 /target
 .vscode
 .npmrc
+*.tgz
