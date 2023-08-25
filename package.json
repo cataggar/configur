@@ -1,0 +1,18 @@
+{
+    "name": "@cataggar/configur",
+    "version": "0.1.8",
+    "description": "transforms configuration files",
+    "main": "main.js",
+    "type": "module",
+    "dependencies": {},
+    "devDependencies": {},
+    "author": "Cameron Taggart",
+    "license": "MIT",
+    "homepage": "https://github.com/cataggar/configur",
+    "files": [
+      "target/wasm32-wasi/release/configur.wasm"
+    ],
+    "bin": {
+      "configur": "configur.js"
+    }
+  }

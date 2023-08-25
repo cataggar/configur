@@ -1,2 +1,5 @@
 /target
 .vscode
+.npmrc
+*.tgz
+package-lock.json
