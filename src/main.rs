@@ -5,6 +5,7 @@ use clap::Parser;
 use glob::glob;
 use serde_json::json;
 use serde_json::Value;
+use serde_json_merge::Iter;
 use serde_json_merge::*;
 use std::collections::HashMap;
 use std::{collections::BTreeMap, fs, str::FromStr};
@@ -153,7 +154,8 @@ fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) 
             &fs::read(yml_path).with_context(|| format!("reading file {yml_path}"))?,
         )
         .with_context(|| format!("reading yml {yml_path}"))?;
-        let value = dump_json.merged_recursive::<Dfs>(&json);
+        let mut value = dump_json.merged_recursive::<Dfs>(&json);
+        remove_brackets(&mut value)?;
         json_cache.insert(yml_path.to_path_buf(), json);
         value
     })
@@ -231,4 +233,49 @@ fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>
     }
     // println!("{includes:#?}");
     Ok(includes)
+}
+
+fn remove_brackets(value: &mut Value) -> Result<()> {
+    value
+        .mutate_recursive::<Dfs>()
+        .for_each(|_, val: &mut Value| {
+            if let Some(obj) = val.as_object_mut() {
+                if let Some(removed) = obj.remove("<<") {
+                    val.merge_recursive::<Dfs>(&removed);
+                }
+            }
+        });
+    Ok(())
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_remove_brackets() -> Result<()> {
+        let mut value = json!({"Processors": [
+          {
+            "6140": {
+              "<<": {
+                "Model": "Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz"
+              },
+              "CPUCount": 2,
+              "TotalCores": 18
+            }
+          }
+        ]});
+        let expected = json!({"Processors": [
+          {
+            "6140": {
+              "Model": "Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz",
+              "CPUCount": 2,
+              "TotalCores": 18
+            }
+          }
+        ]});
+        remove_brackets(&mut value)?;
+        assert_eq!(&value, &expected);
+        Ok(())
+    }
 }
