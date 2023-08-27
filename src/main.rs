@@ -1,12 +1,15 @@
 use anyhow::Context;
 use anyhow::Result;
-use camino::*;
+use camino::Utf8Path;
+use camino::Utf8PathBuf;
 use clap::Parser;
 use glob::glob;
 use serde_json::json;
 use serde_json::Value;
+use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
-use serde_json_merge::*;
+use serde_json_merge::Merge;
+use serde_json_merge::SortKeys;
 use std::collections::HashMap;
 use std::{collections::BTreeMap, fs, str::FromStr};
 
