@@ -66,6 +66,7 @@ fn main() -> Result<()> {
 
     let flags = load_flags(&ev2_path.join("flags.yml"))?;
     let versions = load_flags(&ev2_path.join("versions.yml"))?;
+    let _includes = load_includes(&ev2_path)?;
 
     let environments_yml_paths = list_yml_paths(&environments_path);
     let yml_files = environments_yml_paths
@@ -81,7 +82,7 @@ fn main() -> Result<()> {
         .map(|(k, v)| (k.as_path(), v.clone()))
         .collect();
 
-    let mut input_cache = HashMap::new();
+    let mut json_cache = HashMap::new();
 
     let dirs = dirs_files.keys();
     for dir in dirs {
@@ -118,7 +119,7 @@ fn main() -> Result<()> {
 
         // add environments
         for input_yml_path in input_yml_paths {
-            if let Some(json) = input_cache.get(&input_yml_path) {
+            if let Some(json) = json_cache.get(&input_yml_path) {
                 dump_json = dump_json.merged_recursive::<Dfs>(json);
             } else {
                 let path_full = environments_path.join(input_yml_path);
@@ -127,7 +128,7 @@ fn main() -> Result<()> {
                 )
                 .with_context(|| format!("reading json {path_full}"))?;
                 dump_json = dump_json.merged_recursive::<Dfs>(&json);
-                input_cache.insert(input_yml_path, json);
+                json_cache.insert(input_yml_path, json);
             }
         }
 
@@ -179,4 +180,41 @@ fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, Value>> {
         })
         .collect();
     Ok(flags)
+}
+
+fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>>> {
+    let include_yml = ev2_path.join("include.yml");
+    let json: serde_json::Value = serde_yaml::from_slice(
+        &fs::read(&include_yml).with_context(|| format!("reading file {include_yml}"))?,
+    )?;
+    let mut include_paths = HashMap::new();
+    for (key, values) in json.as_object().unwrap() {
+        let values = values
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>();
+        include_paths.insert(key, values);
+    }
+    // println!("{include_paths:#?}");
+
+    let mut paths_cache: HashMap<Utf8PathBuf, Vec<Utf8PathBuf>> = HashMap::new();
+    let mut includes = HashMap::new();
+    for (key, values) in include_paths {
+        let mut combined_paths = Vec::new();
+        for value in values {
+            let include_path = ev2_path.join(value);
+            if let Some(paths) = paths_cache.get(&include_path) {
+                combined_paths.extend(paths.clone());
+            } else {
+                let paths = list_yml_paths(&include_path);
+                combined_paths.extend(paths.clone());
+                paths_cache.insert(include_path, paths);
+            }
+        }
+        includes.insert(key.to_string(), combined_paths);
+    }
+    // println!("{includes:#?}");
+    Ok(includes)
 }
