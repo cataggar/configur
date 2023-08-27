@@ -150,7 +150,7 @@ fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) 
         dump_json.merged_recursive::<Dfs>(json)
     } else {
         let json: serde_json::Value = serde_yaml::from_slice(
-            &fs::read(&yml_path).with_context(|| format!("reading file {yml_path}"))?,
+            &fs::read(yml_path).with_context(|| format!("reading file {yml_path}"))?,
         )
         .with_context(|| format!("reading yml {yml_path}"))?;
         let value = dump_json.merged_recursive::<Dfs>(&json);
