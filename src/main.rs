@@ -64,7 +64,8 @@ fn main() -> Result<()> {
     let environments_path = ev2_path.join(environments);
     let scratch_path = ev2_path.join(scratch);
 
-    let flags = load_flags(&ev2_path)?;
+    let flags = load_flags(&ev2_path.join("flags.yml"))?;
+    let versions = load_flags(&ev2_path.join("versions.yml"))?;
 
     let environments_yml_paths = list_yml_paths(&environments_path);
     let yml_files = environments_yml_paths
@@ -92,13 +93,17 @@ fn main() -> Result<()> {
         let mut ancestors = dir.ancestors().into_iter().collect::<Vec<_>>();
         ancestors.reverse();
 
-        // add flags
+        // add flags & versions
         for ancestor in &ancestors {
             let path = environments_path
                 .join(ancestor)
                 .strip_prefix(&ev2_path)?
-                .to_string();
+                .to_string()
+                .replace('\\', "/");
             if let Some(json) = flags.get(&path) {
+                dump_json = dump_json.merged_recursive::<Dfs>(json);
+            }
+            if let Some(json) = versions.get(&path) {
                 dump_json = dump_json.merged_recursive::<Dfs>(json);
             }
         }
@@ -126,7 +131,7 @@ fn main() -> Result<()> {
             }
         }
 
-        dump_json.sort_keys();
+        dump_json.sort_keys_recursive::<Dfs>();
         let dir = dump_json_path
             .parent()
             .with_context(|| "parent of {dump_json_path}")?;
@@ -139,10 +144,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn load_flags(ev2: &Utf8Path) -> Result<HashMap<String, Value>> {
+fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, Value>> {
     let mut flags = HashMap::new();
-    let path = ev2.join("flags.yml");
-    let json: serde_json::Value = serde_yaml::from_slice(&fs::read(&path)?)?;
+    let json: serde_json::Value = serde_yaml::from_slice(&fs::read(yml)?)?;
     for (key, values) in json.as_object().unwrap() {
         for (value, paths) in values.as_object().unwrap() {
             for path in paths.as_array().unwrap() {
