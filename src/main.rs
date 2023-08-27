@@ -68,7 +68,7 @@ fn main() -> Result<()> {
 
     let flags = load_flags(&ev2_path.join("flags.yml"))?;
     let versions = load_flags(&ev2_path.join("versions.yml"))?;
-    let _includes = load_includes(&ev2_path)?;
+    let includes = load_includes(&ev2_path)?;
 
     let environments_yml_paths = list_yml_paths(&environments_path);
     let yml_files = environments_yml_paths
@@ -109,6 +109,13 @@ fn main() -> Result<()> {
             if let Some(json) = versions.get(&path) {
                 dump_json = dump_json.merged_recursive::<Dfs>(json);
             }
+
+            // add includes
+            if let Some(yml_paths) = includes.get(&path) {
+                for yml_path in yml_paths {
+                    dump_json = merge_yml(dump_json, &mut json_cache, yml_path)?;
+                }
+            }
         }
 
         for ancestor in &ancestors {
@@ -122,7 +129,7 @@ fn main() -> Result<()> {
         // add environments
         for yml_path in environment_yml_paths {
             let yml_path = environments_path.join(yml_path);
-            dump_json = merge_yml(dump_json, &mut json_cache, yml_path)?;
+            dump_json = merge_yml(dump_json, &mut json_cache, &yml_path)?;
         }
 
         dump_json.sort_keys_recursive::<Dfs>();
@@ -138,8 +145,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: Utf8PathBuf) -> Result<Value> {
-    Ok(if let Some(json) = json_cache.get(&yml_path) {
+fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) -> Result<Value> {
+    Ok(if let Some(json) = json_cache.get(yml_path) {
         dump_json.merged_recursive::<Dfs>(json)
     } else {
         let json: serde_json::Value = serde_yaml::from_slice(
@@ -147,7 +154,7 @@ fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: Utf8PathBuf
         )
         .with_context(|| format!("reading yml {yml_path}"))?;
         let value = dump_json.merged_recursive::<Dfs>(&json);
-        json_cache.insert(yml_path, json);
+        json_cache.insert(yml_path.to_path_buf(), json);
         value
     })
 }
