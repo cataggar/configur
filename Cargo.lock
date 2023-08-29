@@ -169,6 +169,7 @@ dependencies = [
  "camino",
  "clap",
  "glob",
+ "minijinja",
  "serde_json",
  "serde_json_merge",
  "serde_yaml",
@@ -358,6 +359,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "minijinja"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50c43c912b380856deeb78d826e3b77df13a90e69aef6223e3ad28c02d2ca857"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

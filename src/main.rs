@@ -13,6 +13,8 @@ use serde_json_merge::SortKeys;
 use std::collections::HashMap;
 use std::{collections::BTreeMap, fs, str::FromStr};
 
+mod jinga;
+
 type JsonCache = HashMap<Utf8PathBuf, Value>;
 
 #[derive(Parser)]
