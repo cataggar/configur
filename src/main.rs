@@ -139,6 +139,9 @@ fn main() -> Result<()> {
         }
 
         dump_json.sort_keys_recursive::<Dfs>();
+
+        jinga::render(&mut dump_json)?;
+
         let dir = dump_json_path
             .parent()
             .with_context(|| "parent of {dump_json_path}")?;
