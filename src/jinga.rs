@@ -11,7 +11,6 @@ use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
 use std::str::FromStr;
 
-// implement default
 #[derive(Default)]
 struct VarNodes {
     named_nodes: HashMap<String, Node<String>>,
