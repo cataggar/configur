@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::net::IpAddr;
 use anyhow::anyhow;
 use dep_graph::{DepGraph, Node};
@@ -9,6 +7,8 @@ use minijinja::ErrorKind;
 use minijinja::{Environment, Value};
 use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 #[derive(Default)]
@@ -43,7 +43,6 @@ fn create_env<'s>() -> Environment<'s> {
     env.add_filter("ipaddr", ipaddr);
     env.add_filter("ipsubnet", ipsubnet);
     env
-    
 }
 
 fn create_ctx() -> Value {
