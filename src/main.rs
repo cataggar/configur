@@ -140,7 +140,12 @@ fn main() -> Result<()> {
 
         dump_json.sort_keys_recursive::<Dfs>();
 
-        jinga::render(&mut dump_json)?;
+        match jinga::render(&mut dump_json) {
+            Ok(_) => {}
+            Err(_err) => {
+                // println!("render error: {err}");
+            }
+        }
 
         let dir = dump_json_path
             .parent()

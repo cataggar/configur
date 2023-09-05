@@ -1,10 +1,15 @@
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::anyhow;
+use dep_graph::{DepGraph, Node};
+use ipnet::IpNet;
+use minijinja::Error;
+use minijinja::ErrorKind;
 use minijinja::{Environment, Value};
 use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
-use dep_graph::{DepGraph, Node};
+use std::str::FromStr;
 
 // implement default
 #[derive(Default)]
@@ -15,7 +20,7 @@ struct VarNodes {
 impl VarNodes {
     /// get or create node with name
     fn get_or_create(&mut self, name: &str) -> &mut Node<String> {
-        if !self.named_nodes.contains_key((name)){
+        if !self.named_nodes.contains_key(name) {
             let node = Node::new(name.to_string());
             self.named_nodes.insert(name.to_string(), node);
         }
@@ -31,123 +36,131 @@ impl VarNodes {
     }
 }
 
-/// Renders any values that are jinja templates.
-/// The keys are set as global varaibles.
-pub fn render(value: &mut serde_json::Value) -> Result<()> {
-
+fn create_env<'s>() -> Environment<'s> {
     let mut env = Environment::new();
     env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+    env.add_filter("string", string);
+    env.add_filter("nthhost", nthhost);
+    env
+}
 
-    // let mut template_strings = Vec::new();
-    
+fn create_ctx() -> Value {
+    Value::default()
+}
+
+/// Renders any values that are jinja templates.
+/// The keys are set as global varaibles.
+pub fn render(value: &mut serde_json::Value) -> anyhow::Result<()> {
+    let mut env = create_env();
+    let ctx = create_ctx();
+
+    let mut templates = HashMap::new();
+    let mut invalid_templates = BTreeSet::new();
 
     // build graph of variables
-    // let mut var_node: HashMap<String, Node<String>> = HashMap::new();
-    // let mut variables: Vec<Node<String>> = Vec::new();
     let mut var_nodes = VarNodes::default();
-    value.iter_recursive::<Dfs>().for_each(|(path, value)| {
+    value.iter::<Dfs>().for_each(|(path, value)| {
         if let Some(value) = value.as_str() {
-
-            // all root keys are variables
-            // if let Some(root_key) = root_node {
-            //     variables.push(variable);
-            // }
-            // if the value is a template
+            let name = path.last().unwrap().to_string();
             if value.contains("{{") {
-                let root_var: Option<String> = 
-                if path.depth() == 1 {
-                    Some(path.last().unwrap().to_string())
-                } else {
-                    None
-                };
                 if let Ok(tmpl) = env.template_from_str(value) {
                     let vars = tmpl.undeclared_variables(false);
                     for var in &vars {
-                        if let Some(root_var) = &root_var {
-                            var_nodes.add_dep(root_var, var)
-                        }
+                        var_nodes.add_dep(&name, var);
                         var_nodes.get_or_create(var);
                     }
+                    templates.insert(name.clone(), value);
+                } else {
+                    invalid_templates.insert(value);
                 }
+            } else {
+                env.add_global(name, value);
             }
         }
     });
+    if !invalid_templates.is_empty() {
+        return Err(anyhow!("invalid templates: {invalid_templates:?}"));
+    }
 
-    // let graph = DepGraph::new(&variables);
     let graph = var_nodes.graph();
-    graph
-        .into_iter()
-        .for_each(|node| {
-            println!("{:?}", node)
+    graph.into_iter().for_each(|name| {
+        if let Some(tmpl) = templates.get(&name) {
+            if let Ok(value) = env.render_str(tmpl, &ctx) {
+                env.add_global(name, value);
+            }
+        };
+    });
+
+    let mut render_errors = Vec::new();
+    value
+        .mutate_recursive::<Dfs>()
+        .for_each(|_path, value: &mut serde_json::Value| {
+            if let Some(val) = value.as_str() {
+                if val.contains("{{") {
+                    match env.render_str(val, &ctx) {
+                        Ok(val) => *value = val.into(),
+                        Err(err) => {
+                            render_errors.push(err);
+                        }
+                    }
+                }
+            }
         });
 
-    // value
-    //     .mutate_recursive::<Dfs>()
-    //     .for_each(|_, val: &mut Value| {
-    //         if let Some(obj) = val.as_object_mut() {
-    //             if let Some(removed) = obj.remove("<<") {
-    //                 val.merge_recursive::<Dfs>(&removed);
-    //             }
-    //         }
-    //     });
+    if !render_errors.is_empty() {
+        return Err(anyhow!("render errors: {render_errors:?}"));
+    }
     Ok(())
 }
 
-fn nthhost_filter(value: String, n: i32) -> String {
-    println!("nthhost_filter {value} {n}");
-    format!("{value}{n}")
+fn string(value: &Value) -> Result<String, Error> {
+    Ok(value.to_string())
+}
+
+/// The nth IP address in a IP network.
+fn nthhost(network: String, n: usize) -> Result<String, Error> {
+    let net = IpNet::from_str(&network).map_err(|err| {
+        Error::new(ErrorKind::InvalidOperation, "cannot get nthhost").with_source(err)
+    })?;
+    let ip = if n == 0 {
+        net.network()
+    } else {
+        net.hosts().nth(n - 1).ok_or(Error::new(
+            ErrorKind::InvalidOperation,
+            "cannot get nthhost",
+        ))?
+    };
+    Ok(ip.to_string())
 }
 
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use minijinja::{context, UndefinedBehavior};
-    use std::collections::BTreeMap;
+
+    fn assert_render(tmpl_str: &str, expected: &str) -> anyhow::Result<()> {
+        let env = create_env();
+        let ctx = create_ctx();
+        let actual = env.render_str(tmpl_str, ctx)?;
+        if actual != expected {
+            return Err(anyhow!(
+                "expected: {expected}, actual: {actual}, template: {tmpl_str}"
+            ));
+        }
+        Ok(())
+    }
 
     #[test]
-    fn test_remove_brackets() -> Result<()> {
-        // let expr_str = "aks_static_services_subnet | string | nthhost(7)";
-        // let expr_str = "'aks static services subnet' | string | nthhost(7)";
-        // let expr_str = "1 + 4";
+    fn test_string() -> anyhow::Result<()> {
+        assert_render("{{ 'abc' | string }}", "abc")?;
+        assert_render("{{ false | string }}", "false")?;
+        assert_render("{{ 1 | string }}", "1")?;
+        Ok(())
+    }
 
-        let tmpl_str = "{{aks_static_services_subnet | nthhost(7)}}";
-
-        BTreeMap::from_iter(vec![(1, 2), (3, 4)]);
-
-        // let mut variables = BTreeMap::new();
-        // variables.insert("aks_static_services_subnet", "100.73.5.0/24");
-        // let ctx = Value::from(variables);
-
-        let mut env = Environment::new();
-        // env.add_filter("string", string_filter);
-        env.add_filter("nthhost", nthhost_filter);
-        env.set_debug(true);
-        env.set_undefined_behavior(UndefinedBehavior::Strict);
-        env.add_global("aks_static_services_subnet", "100.73.5.0/24");
-        env.add_global("host", "abc");
-
-        // let expr = env.compile_expression(expr_str)?;
-        // let result = expr.eval()?;
-
-        // let tmpl = env.template_from_str(tmpl_str)?;
-
-        let _tmpl_host = env.template_from_named_str("host", "{{aks_static_services_subnet | nthhost(7)}}")?;
-
-        
-
-        let tmpl_host2 = env.template_from_named_str("host2", "{{ host | nthhost(7)}}")?;
-        let variables = tmpl_host2.undeclared_variables(false);
-        println!("variables {variables:?}");
-        
-
-        // let (rv, _state) = tmpl_host2.render_and_return_state(ctx)?;
-        let ctx = Value::default();
-        let rv = tmpl_host2.render(ctx)?;
-        println!("rv {rv}");
-
-        let serialized = serde_json::to_string_pretty(&rv)?;
-        println!("serialized {serialized}");
-
+    #[test]
+    fn test_nthhost() -> anyhow::Result<()> {
+        assert_render("{{ '10.0.0.0/8' | nthhost(0) }}", "10.0.0.0")?;
+        assert_render("{{ '10.0.0.0/8' | nthhost(1) }}", "10.0.0.1")?;
         Ok(())
     }
 }
