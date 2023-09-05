@@ -13,6 +13,8 @@ use serde_json_merge::SortKeys;
 use std::collections::HashMap;
 use std::{collections::BTreeMap, fs, str::FromStr};
 
+mod jinga;
+
 type JsonCache = HashMap<Utf8PathBuf, Value>;
 
 #[derive(Parser)]
@@ -137,6 +139,14 @@ fn main() -> Result<()> {
         }
 
         dump_json.sort_keys_recursive::<Dfs>();
+
+        match jinga::render(&mut dump_json) {
+            Ok(_) => {}
+            Err(_err) => {
+                // println!("render error: {err}");
+            }
+        }
+
         let dir = dump_json_path
             .parent()
             .with_context(|| "parent of {dump_json_path}")?;
