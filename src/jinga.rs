@@ -1,6 +1,3 @@
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-
 use anyhow::anyhow;
 use dep_graph::{DepGraph, Node};
 use ipnet::IpNet;
@@ -9,6 +6,8 @@ use minijinja::ErrorKind;
 use minijinja::{Environment, Value};
 use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 #[derive(Default)]
@@ -40,6 +39,7 @@ fn create_env<'s>() -> Environment<'s> {
     env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
     env.add_filter("string", string);
     env.add_filter("nthhost", nthhost);
+    env.add_filter("ipaddr", ipaddr);
     env
 }
 
@@ -132,6 +132,20 @@ fn nthhost(network: String, n: usize) -> Result<String, Error> {
     Ok(ip.to_string())
 }
 
+fn ipaddr(network: String, action: &Value) -> Result<String, Error> {
+    if let Some(action) = action.as_str() {
+        if let Ok(n) = action.parse::<usize>() {
+            return nthhost(network, n);
+        }
+        if action == "address" {
+            if let Ok(net) = IpNet::from_str(&network) {
+                return Ok(net.network().to_string());
+            }
+        }
+    }
+    Ok(network)
+}
+
 #[cfg(test)]
 pub mod test {
     use super::*;
@@ -160,6 +174,19 @@ pub mod test {
     fn test_nthhost() -> anyhow::Result<()> {
         assert_render("{{ '10.0.0.0/8' | nthhost(0) }}", "10.0.0.0")?;
         assert_render("{{ '10.0.0.0/8' | nthhost(1) }}", "10.0.0.1")?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_ipaddr() -> anyhow::Result<()> {
+        assert_render("{{ '10.0.0.0/8' | ipaddr('0') }}", "10.0.0.0")?;
+        assert_render("{{ '10.0.0.0/8' | ipaddr('1') }}", "10.0.0.1")?;
+        assert_render("{{ '10.0.0.0/8' | ipaddr('address') }}", "10.0.0.0")?;
+        assert_render("{{ '10.0.0.0' | ipaddr('address') }}", "10.0.0.0")?;
+        assert_render(
+            "{{ '169.254.0.0/30' | ipaddr('2') | ipaddr('address') }}",
+            "169.254.0.2",
+        )?;
         Ok(())
     }
 }
