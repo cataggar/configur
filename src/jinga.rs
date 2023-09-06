@@ -8,6 +8,7 @@ use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::str::FromStr;
 
 #[derive(Default)]
@@ -45,6 +46,35 @@ fn create_env<'s>() -> Environment<'s> {
 
 fn create_ctx() -> Value {
     Value::default()
+}
+
+fn variables_from_str(env: &Environment, value: &str, name: Option<&str>, templates: &mut HashMap<String, &str>, invalid_templates: &mut BTreeSet<&str>) -> HashSet<String> {
+    let mut vars = HashSet::new();
+    if value.contains("{{") {
+        if let Ok(tmpl) = env.template_from_str(value) {
+            vars.extend(tmpl.undeclared_variables(false));
+            if let Some(name) = name {
+                templates.insert(name.to_string(), value);
+            }
+        } else {
+            invalid_templates.insert(value);
+        }
+    }
+    HashSet::new()
+}
+
+// get undeclared variables from Value
+fn variables_from_value(env: &Environment , value: &serde_json::Value, name: Option<&str>, templates: &mut HashMap<String, &str>, invalid_templates: &mut BTreeSet<&str>) -> HashSet<String> {
+    let mut vars = HashSet::new();
+    if let Some(value) = value.as_str() {
+        vars.extend(variables_from_str(env, value, name, templates, invalid_templates));
+    }
+    if let Some(value) = value.as_array() {
+        for value in value {
+            vars.extend(variables_from_value(env, value, name, templates, invalid_templates));
+        }
+    }
+    vars
 }
 
 /// Renders any values that are jinja templates.
