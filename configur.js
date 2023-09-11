@@ -6,10 +6,13 @@ import { readFile } from "node:fs/promises";
 import { WASI } from "wasi";
 import { argv, env } from "node:process";
 import { parseArgs } from "node:util";
-// import path from 'node:path';
+import { spawn } from  "node:child_process";
+import { dirname, join, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // get the index for the first argument that ends in main.js
-// console.log(argv);
 let index = argv.findIndex((arg) => arg.endsWith("--"));
 if (index === -1) {
   index = argv.findIndex((arg) => arg.endsWith("configur.js"));
@@ -17,9 +20,7 @@ if (index === -1) {
 if (index === -1) {
   index = argv.findIndex((arg) => arg.endsWith("configur"));
 }
-// console.log(index);
 const args = argv.slice(index + 1);
-// console.log(args);
 
 const options = {
   help: {
@@ -29,60 +30,74 @@ const options = {
   ev2: {
     type: "string",
   },
-  // source: {
-  //   short: 's',
-  //   type: 'string',
-  //   default: 'environments',
-  // },
-  // target: {
-  //   short: 't',
-  //   type: 'string',
-  //   default: 'scratch',
-  // },
+  wasmtime: {
+    short: "w",
+    type: "boolean",
+  },
 };
 
 try {
   const pargs = parseArgs({ args, options });
-  // console.log(pargs);
-  // console.log(pargs.values.source);
   const ev2 = pargs.values.ev2;
-  // const source = path.join("/ev2", pargs.values.source);
-  // const target = path.join("/ev2", pargs.values.target);
   if (!ev2) {
     throw new Error("--ev2 must be set");
   }
-  // console.log(ev2);
-  // console.log(source);
-  // console.log(target);
+  const full_ev2 = isAbsolute(ev2) ? ev2 : join(process.cwd(), ev2);
 
-  const wargs = [
-    "configur",
-    "--ev2",
-    ev2,
-    "--source",
-    "/ev2/environments",
-    "--target",
-    "/ev2/scratch",
-  ];
-  console.log(wargs);
+  // check if we should run wasmtime
+  let wasmtime = pargs.values.wasmtime;
+  if (!wasmtime) {
+    // use wasmtime on Windows by default
+    // Node.js for Windows does is missing some WASI functionality
+    // https://github.com/nodejs/help/issues/4231
+    wasmtime = process.platform === 'win32';
+  }
 
-  const wasi = new WASI({
-    version: "preview1",
-    args: wargs,
-    env,
-    preopens: {
-      "/ev2": ev2,
-    },
-  });
+  if (wasmtime) {
 
-  const wasm = await WebAssembly.compile(
-    await readFile(
-      new URL("target/wasm32-wasi/release/configur.wasm", import.meta.url)
-    )
-  );
-  const instance = await WebAssembly.instantiate(wasm, wasi.getImportObject());
+    // wasmtime run --dir $EV2 target\wasm32-wasi\release\configur.wasm -- --ev2 $EV2
+    let wasmPath = join(__dirname, "target/wasm32-wasi/release/configur.wasm");
+    let childArgs = ["run", "--dir", full_ev2, wasmPath, "--", "--ev2", full_ev2];
+    const child = spawn("wasmtime", childArgs);
+    child.stdout.pipe(process.stdout);
+    child.stderr.pipe(process.stderr);
+    child.on('exit', function() {
+      process.exit();
+    })
 
-  wasi.start(instance);
+  } else {
+
+    const wargs = [
+      "configur",
+      "--ev2",
+      full_ev2,
+      "--source",
+      "/ev2/environments",
+      "--target",
+      "/ev2/scratch",
+    ];
+    console.log(wargs);
+  
+    const wasi = new WASI({
+      version: "preview1",
+      args: wargs,
+      env,
+      preopens: {
+        "/ev2": full_ev2,
+      },
+    });
+  
+    const wasm = await WebAssembly.compile(
+      await readFile(
+        new URL("target/wasm32-wasi/release/configur.wasm", import.meta.url)
+      )
+    );
+    const instance = await WebAssembly.instantiate(wasm, wasi.getImportObject());
+  
+    wasi.start(instance);
+  }
+
+
 } catch (e) {
   console.error(e.message);
 }

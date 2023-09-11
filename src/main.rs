@@ -60,8 +60,6 @@ fn group_yml_files_by_dir(files: Vec<&Utf8Path>) -> BTreeMap<Utf8PathBuf, Vec<&U
 }
 
 fn main() -> Result<()> {
-    let a: Vec<_> = std::env::args().collect();
-    println!("main args: {a:?}");
     let Cli {
         ev2,
         environments,
