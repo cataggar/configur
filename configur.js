@@ -7,6 +7,10 @@ import { WASI } from "wasi";
 import { argv, env } from "node:process";
 import { parseArgs } from "node:util";
 import { spawn } from  "node:child_process";
+import { dirname, join, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // get the index for the first argument that ends in main.js
 let index = argv.findIndex((arg) => arg.endsWith("--"));
@@ -38,10 +42,11 @@ try {
   if (!ev2) {
     throw new Error("--ev2 must be set");
   }
+  const full_ev2 = isAbsolute(ev2) ? ev2 : join(process.cwd(), ev2);
 
   // check if we should run wasmtime
   let wasmtime = pargs.values.wasmtime;
-  if (wasmtime === undefined) {
+  if (!wasmtime) {
     // use wasmtime on Windows by default
     // Node.js for Windows does is missing some WASI functionality
     // https://github.com/nodejs/help/issues/4231
@@ -51,7 +56,8 @@ try {
   if (wasmtime) {
 
     // wasmtime run --dir $EV2 target\wasm32-wasi\release\configur.wasm -- --ev2 $EV2
-    let childArgs = ["run", "--dir", ev2, "target/wasm32-wasi/release/configur.wasm", "--", "--ev2", ev2];
+    let wasmPath = join(__dirname, "target/wasm32-wasi/release/configur.wasm");
+    let childArgs = ["run", "--dir", full_ev2, wasmPath, "--", "--ev2", full_ev2];
     const child = spawn("wasmtime", childArgs);
     child.stdout.pipe(process.stdout);
     child.stderr.pipe(process.stderr);
@@ -64,7 +70,7 @@ try {
     const wargs = [
       "configur",
       "--ev2",
-      ev2,
+      full_ev2,
       "--source",
       "/ev2/environments",
       "--target",
@@ -77,7 +83,7 @@ try {
       args: wargs,
       env,
       preopens: {
-        "/ev2": ev2,
+        "/ev2": full_ev2,
       },
     });
   
