@@ -27,22 +27,27 @@ const options = {
     short: "h",
     type: "boolean",
   },
-  ev2: {
-    type: "string",
-  },
   wasmtime: {
     short: "w",
     type: "boolean",
   },
+  ev2: {
+    type: "string",
+  },
+  environments: {
+    short: "e",
+    type: "string",
+  },
+  scratch: {
+    short: "s",
+    type: "string",
+  }
 };
 
 try {
   const pargs = parseArgs({ args, options });
   const ev2 = pargs.values.ev2;
-  if (!ev2) {
-    throw new Error("--ev2 must be set");
-  }
-  const full_ev2 = isAbsolute(ev2) ? ev2 : join(process.cwd(), ev2);
+  const full_ev2 = !ev2 || isAbsolute(ev2) ? ev2 : join(process.cwd(), ev2);
 
   // check if we should run wasmtime
   let wasmtime = pargs.values.wasmtime;
@@ -53,11 +58,18 @@ try {
     wasmtime = process.platform === 'win32';
   }
 
+  const configurArgs = !ev2 ? ["--help"] : ["--ev2", full_ev2];
+  const environmentsArgs = pargs.values.environments ? ["--environments", pargs.values.environments] : [];
+  const scratchArgs = pargs.values.scratch ? ["--scratch", pargs.values.scratch] : [];
+
+  const wasmPath = "target/wasm32-wasi/release/configur.wasm";
+
   if (wasmtime) {
 
     // wasmtime run --dir $EV2 target\wasm32-wasi\release\configur.wasm -- --ev2 $EV2
-    let wasmPath = join(__dirname, "target/wasm32-wasi/release/configur.wasm");
-    let childArgs = ["run", "--dir", full_ev2, wasmPath, "--", "--ev2", full_ev2];
+    const dirArgs = ev2 ? ["--dir", full_ev2] : [];
+    let childArgs = ["run", ...dirArgs, join(__dirname, wasmPath), "--",
+      ...configurArgs, ...environmentsArgs, ...scratchArgs];
     const child = spawn("wasmtime", childArgs);
     child.stdout.pipe(process.stdout);
     child.stderr.pipe(process.stderr);
@@ -67,17 +79,7 @@ try {
 
   } else {
 
-    const wargs = [
-      "configur",
-      "--ev2",
-      full_ev2,
-      "--source",
-      "/ev2/environments",
-      "--target",
-      "/ev2/scratch",
-    ];
-    console.log(wargs);
-  
+    const wargs = [ "configur", ...configur_args, ...environmentsArgs, ...scratchArgs];
     const wasi = new WASI({
       version: "preview1",
       args: wargs,
@@ -89,7 +91,7 @@ try {
   
     const wasm = await WebAssembly.compile(
       await readFile(
-        new URL("target/wasm32-wasi/release/configur.wasm", import.meta.url)
+        new URL(wasmPath, import.meta.url)
       )
     );
     const instance = await WebAssembly.instantiate(wasm, wasi.getImportObject());
