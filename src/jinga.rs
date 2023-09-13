@@ -198,10 +198,18 @@ fn ipaddr(network: String, action: &Value) -> Result<String, Error> {
 
 fn ipsubnet(ip_network: String, prefix_len: u8, incr: usize) -> Result<String, Error> {
     let net = IpNet::from_str(&ip_network).map_err(|err| {
-        Error::new(ErrorKind::InvalidOperation, format!("invalid IP network {ip_network}")).with_source(err)
+        Error::new(
+            ErrorKind::InvalidOperation,
+            format!("invalid IP network {ip_network}"),
+        )
+        .with_source(err)
     })?;
     let mut subnets = net.subnets(prefix_len).map_err(|err| {
-        Error::new(ErrorKind::InvalidOperation, format!("cannot get subnets of {net} with prefix length {prefix_len}")).with_source(err)
+        Error::new(
+            ErrorKind::InvalidOperation,
+            format!("cannot get subnets of {net} with prefix length {prefix_len}"),
+        )
+        .with_source(err)
     })?;
     let subnet = subnets.nth(incr).ok_or(Error::new(
         ErrorKind::InvalidOperation,
@@ -210,16 +218,18 @@ fn ipsubnet(ip_network: String, prefix_len: u8, incr: usize) -> Result<String, E
     Ok(subnet.to_string())
 }
 
-
 #[cfg(test)]
 pub mod test {
+    use super::*;
     use anyhow::ensure;
     use serde_json::json;
-    use super::*;
 
     #[test]
     fn test_ipsubnet() -> anyhow::Result<()> {
-        assert_render("{{ '100.73.148.0/22' | ipsubnet(24, 3) }}", "100.73.151.0/24")?;
+        assert_render(
+            "{{ '100.73.148.0/22' | ipsubnet(24, 3) }}",
+            "100.73.151.0/24",
+        )?;
         Ok(())
     }
 
