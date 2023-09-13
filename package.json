@@ -1,6 +1,6 @@
 {
     "name": "@cataggar/configur",
-    "version": "0.2.0",
+    "version": "0.2.11",
     "description": "transforms configuration files",
     "main": "main.js",
     "type": "module",

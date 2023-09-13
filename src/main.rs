@@ -26,6 +26,8 @@ struct Cli {
     environments: String,
     #[arg(short, long, default_value = "scratch")]
     scratch: String,
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 fn list_yml_paths(dir: &Utf8Path) -> Vec<Utf8PathBuf> {
@@ -60,12 +62,11 @@ fn group_yml_files_by_dir(files: Vec<&Utf8Path>) -> BTreeMap<Utf8PathBuf, Vec<&U
 }
 
 fn main() -> Result<()> {
-    let a: Vec<_> = std::env::args().collect();
-    println!("main args: {a:?}");
     let Cli {
         ev2,
         environments,
         scratch,
+        verbose,
     } = &Cli::parse();
 
     let ev2_path = Utf8PathBuf::from_str(ev2)?;
@@ -142,8 +143,10 @@ fn main() -> Result<()> {
 
         match jinga::render(&mut dump_json) {
             Ok(_) => {}
-            Err(_err) => {
-                // println!("render error: {err}");
+            Err(err) => {
+                if *verbose {
+                    println!("render error: {err}");
+                }
             }
         }
 
@@ -226,7 +229,6 @@ fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>
             .collect::<Vec<_>>();
         include_paths.insert(key, values);
     }
-    // println!("{include_paths:#?}");
 
     let mut paths_cache: HashMap<Utf8PathBuf, Vec<Utf8PathBuf>> = HashMap::new();
     let mut includes = HashMap::new();
@@ -244,7 +246,6 @@ fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>
         }
         includes.insert(key.to_string(), combined_paths);
     }
-    // println!("{includes:#?}");
     Ok(includes)
 }
 
