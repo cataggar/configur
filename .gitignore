@@ -3,3 +3,4 @@
 .npmrc
 *.tgz
 package-lock.json
+*.log

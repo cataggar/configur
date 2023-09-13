@@ -27,6 +27,10 @@ const options = {
     short: "h",
     type: "boolean",
   },
+  verbose: {
+    short: "v",
+    type: "boolean",
+  },
   wasmtime: {
     short: "w",
     type: "boolean",
