@@ -176,7 +176,8 @@ fn string(value: &Value) -> Result<String, Error> {
     Ok(value.to_string())
 }
 
-fn int(value: &str) -> Result<i32, Error> {
+fn int(value: &Value) -> Result<i32, Error> {
+    let value = value.to_string();
     value.parse::<i32>().map_err(|err| {
         Error::new(ErrorKind::InvalidOperation, "cannot convert to int").with_source(err)
     })
@@ -347,6 +348,7 @@ pub mod test {
     #[test]
     fn test_int() -> anyhow::Result<()> {
         assert_render("{{ '7' | int }}", "7")?;
+        assert_render("{{ 101 | int }}", "101")?;
         Ok(())
     }
 
