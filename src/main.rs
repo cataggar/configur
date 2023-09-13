@@ -5,7 +5,6 @@ use camino::Utf8PathBuf;
 use clap::Parser;
 use glob::glob;
 use serde_json::json;
-use serde_json::Value;
 use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
 use serde_json_merge::Merge;
@@ -15,7 +14,7 @@ use std::{collections::BTreeMap, fs, str::FromStr};
 
 mod jinga;
 
-type JsonCache = HashMap<Utf8PathBuf, Value>;
+type JsonCache = HashMap<Utf8PathBuf, serde_json::Value>;
 
 #[derive(Parser)]
 #[command(version)]
@@ -99,32 +98,41 @@ fn main() -> Result<()> {
         println!("dump_json_path: {dump_json_path}");
         let mut dump_json = json!({});
 
-        let mut environment_yml_paths = Vec::new();
         let mut ancestors = dir.ancestors().into_iter().collect::<Vec<_>>();
         ancestors.reverse();
+        let ancestor_paths = ancestors
+            .iter()
+            .map(|ancestor| {
+                environments_path
+                    .join(ancestor)
+                    .strip_prefix(&ev2_path)
+                    .unwrap()
+                    .to_string()
+                    .replace('\\', "/")
+            })
+            .collect::<Vec<_>>();
 
-        // add flags & versions
-        for ancestor in &ancestors {
-            let path = environments_path
-                .join(ancestor)
-                .strip_prefix(&ev2_path)?
-                .to_string()
-                .replace('\\', "/");
-            if let Some(json) = flags.get(&path) {
-                dump_json = dump_json.merged_recursive::<Dfs>(json);
-            }
-            if let Some(json) = versions.get(&path) {
-                dump_json = dump_json.merged_recursive::<Dfs>(json);
-            }
-
-            // add includes
-            if let Some(yml_paths) = includes.get(&path) {
+        // add includes
+        for path in &ancestor_paths {
+            if let Some(yml_paths) = includes.get(path) {
                 for yml_path in yml_paths {
                     dump_json = merge_yml(dump_json, &mut json_cache, yml_path)?;
                 }
             }
         }
 
+        // add flags & versions
+        for path in &ancestor_paths {
+            if let Some(json) = flags.get(path) {
+                dump_json = dump_json.merged_recursive::<Dfs>(json);
+            }
+            if let Some(json) = versions.get(path) {
+                dump_json = dump_json.merged_recursive::<Dfs>(json);
+            }
+        }
+
+        // add environments
+        let mut environment_yml_paths = Vec::new();
         for ancestor in &ancestors {
             if let Some(dir_files) = dirs_files.get(ancestor) {
                 for file in dir_files {
@@ -132,8 +140,6 @@ fn main() -> Result<()> {
                 }
             }
         }
-
-        // add environments
         for yml_path in environment_yml_paths {
             let yml_path = environments_path.join(yml_path);
             dump_json = merge_yml(dump_json, &mut json_cache, &yml_path)?;
@@ -162,24 +168,25 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn merge_yml(dump_json: Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) -> Result<Value> {
+fn merge_yml(dump_json: serde_json::Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) -> Result<serde_json::Value> {
     Ok(if let Some(json) = json_cache.get(yml_path) {
         dump_json.merged_recursive::<Dfs>(json)
     } else {
-        let json: serde_json::Value = serde_yaml::from_slice(
+        let mut json: serde_json::Value = serde_yaml::from_slice(
             &fs::read(yml_path).with_context(|| format!("reading file {yml_path}"))?,
         )
         .with_context(|| format!("reading yml {yml_path}"))?;
-        let mut value = dump_json.merged_recursive::<Dfs>(&json);
-        remove_brackets(&mut value)?;
+        remove_brackets(&mut json)?;
+        let value = dump_json.merged_recursive::<Dfs>(&json);
         json_cache.insert(yml_path.to_path_buf(), json);
         value
     })
 }
 
-fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, Value>> {
+fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, serde_json::Value>> {
     let mut flags = HashMap::new();
-    let json: serde_json::Value = serde_yaml::from_slice(&fs::read(yml)?)?;
+    let mut json: serde_json::Value = serde_yaml::from_slice(&fs::read(yml)?)?;
+    remove_brackets(&mut json)?;
     for (key, values) in json.as_object().unwrap() {
         for (value, paths) in values.as_object().unwrap() {
             for path in paths.as_array().unwrap() {
@@ -208,7 +215,7 @@ fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, Value>> {
                 };
                 map.insert(key, value);
             });
-            (path, Value::Object(map))
+            (path, serde_json::Value::Object(map))
         })
         .collect();
     Ok(flags)
@@ -216,9 +223,10 @@ fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, Value>> {
 
 fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>>> {
     let include_yml = ev2_path.join("include.yml");
-    let json: serde_json::Value = serde_yaml::from_slice(
+    let mut json: serde_json::Value = serde_yaml::from_slice(
         &fs::read(&include_yml).with_context(|| format!("reading file {include_yml}"))?,
     )?;
+    remove_brackets(&mut json)?;
     let mut include_paths = HashMap::new();
     for (key, values) in json.as_object().unwrap() {
         let values = values
@@ -249,10 +257,10 @@ fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>
     Ok(includes)
 }
 
-fn remove_brackets(value: &mut Value) -> Result<()> {
+fn remove_brackets(value: &mut serde_json::Value) -> Result<()> {
     value
         .mutate_recursive::<Dfs>()
-        .for_each(|_, val: &mut Value| {
+        .for_each(|_, val: &mut serde_json::Value| {
             if let Some(obj) = val.as_object_mut() {
                 if let Some(removed) = obj.remove("<<") {
                     val.merge_recursive::<Dfs>(&removed);
