@@ -147,6 +147,22 @@ pub fn render(value: &mut serde_json::Value) -> anyhow::Result<()> {
                         }
                     }
                 }
+            } else if let Some(obj) = value.as_object_mut() {
+                // render key if it is a template
+                let keys = obj.keys().cloned().collect::<Vec<_>>();
+                keys.iter().for_each(|key| {
+                    if key.contains("{{") {
+                        match env.render_str(key, &ctx) {
+                            Ok(rendered_key) => {
+                                let value = obj.remove(key.as_str()).unwrap();
+                                obj.insert(rendered_key, value);
+                            }
+                            Err(err) => {
+                                render_errors.push(err);
+                            }
+                        }
+                    }
+                });
             }
         });
 

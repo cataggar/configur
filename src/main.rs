@@ -168,7 +168,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn merge_yml(dump_json: serde_json::Value, json_cache: &mut JsonCache, yml_path: &Utf8Path) -> Result<serde_json::Value> {
+fn merge_yml(
+    dump_json: serde_json::Value,
+    json_cache: &mut JsonCache,
+    yml_path: &Utf8Path,
+) -> Result<serde_json::Value> {
     Ok(if let Some(json) = json_cache.get(yml_path) {
         dump_json.merged_recursive::<Dfs>(json)
     } else {
