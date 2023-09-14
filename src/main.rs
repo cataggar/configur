@@ -104,29 +104,37 @@ fn main() -> Result<()> {
         }
         // write yml file
         // fs::write(path, serde_yaml::to_string(&yml)?)?;
-        if !must_remove.is_empty(){
-            // loop through all lines in file and remove and that must be removed
-            let reader = Cursor::new(file);
-            let mut new_lines = Vec::new();
-            //read lines from a files
-            let lines = reader.lines();;
-            for line in lines {
-                if let Ok(line) = line {
-                    let mut must_remove_line = false;
-                    for key in &must_remove {
-                        if line.contains(&format!("{key}:")) {
-                            must_remove_line = true;
-                            break;
-                        }
-                    }
-                    if !must_remove_line {
-                        new_lines.push(line);
+        let mut overridden = BTreeSet::new();
+        // loop through all lines in file and remove and that must be removed
+        let reader = Cursor::new(file);
+        let mut new_lines = Vec::new();
+        //read lines from a files
+        let lines = reader.lines();;
+        for line in lines {
+            if let Ok(line) = line {
+                let mut must_remove_line = false;
+                for key in &must_remove {
+                    if line.contains(&format!("{key}:")) {
+                        overridden.insert(key.to_string());
+                        must_remove_line = true;
+                        break;
                     }
                 }
+                if !must_remove_line {
+                    new_lines.push(line);
+                }
             }
-            new_lines.push("".to_string());
-            // write lines to file
-            fs::write(path, new_lines.join("\n"))?;
+        }
+        new_lines.push("".to_string());
+        // write lines to file
+        // fs::write(path, new_lines.join("\n"))?;
+
+        if !overridden.is_empty() {
+            println!("{path}");
+            for k in &overridden {
+                println!("  {k}");
+            }
+            println!("");
         }
     }
 
