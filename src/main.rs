@@ -60,6 +60,15 @@ fn group_yml_files_by_dir(files: Vec<&Utf8Path>) -> BTreeMap<Utf8PathBuf, Vec<&U
     dirs
 }
 
+fn ancestor_path(environments_path: &Utf8Path, ancestor: &Utf8Path, ev2_path: &Utf8Path) -> String {
+    environments_path
+        .join(ancestor)
+        .strip_prefix(ev2_path)
+        .unwrap()
+        .to_string()
+        .replace('\\', "/")
+}
+
 fn main() -> Result<()> {
     let Cli {
         ev2,
@@ -100,49 +109,32 @@ fn main() -> Result<()> {
 
         let mut ancestors = dir.ancestors().into_iter().collect::<Vec<_>>();
         ancestors.reverse();
-        let ancestor_paths = ancestors
-            .iter()
-            .map(|ancestor| {
-                environments_path
-                    .join(ancestor)
-                    .strip_prefix(&ev2_path)
-                    .unwrap()
-                    .to_string()
-                    .replace('\\', "/")
-            })
-            .collect::<Vec<_>>();
 
-        // add includes
-        for path in &ancestor_paths {
-            if let Some(yml_paths) = includes.get(path) {
+        for ancestor in &ancestors {
+            let ancestor_path = &ancestor_path(&environments_path, ancestor, &ev2_path);
+
+            // add includes
+            if let Some(yml_paths) = includes.get(ancestor_path) {
                 for yml_path in yml_paths {
                     dump_json = merge_yml(dump_json, &mut json_cache, yml_path)?;
                 }
             }
-        }
 
-        // add flags & versions
-        for path in &ancestor_paths {
-            if let Some(json) = flags.get(path) {
+            // add flags & versions
+            if let Some(json) = flags.get(ancestor_path) {
                 dump_json = dump_json.merged_recursive::<Dfs>(json);
             }
-            if let Some(json) = versions.get(path) {
+            if let Some(json) = versions.get(ancestor_path) {
                 dump_json = dump_json.merged_recursive::<Dfs>(json);
             }
-        }
 
-        // add environments
-        let mut environment_yml_paths = Vec::new();
-        for ancestor in &ancestors {
+            // add environments
             if let Some(dir_files) = dirs_files.get(ancestor) {
                 for file in dir_files {
-                    environment_yml_paths.push(file);
+                    let yml_path = environments_path.join(file);
+                    dump_json = merge_yml(dump_json, &mut json_cache, &yml_path)?;
                 }
             }
-        }
-        for yml_path in environment_yml_paths {
-            let yml_path = environments_path.join(yml_path);
-            dump_json = merge_yml(dump_json, &mut json_cache, &yml_path)?;
         }
 
         dump_json.sort_keys_recursive::<Dfs>();
