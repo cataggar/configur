@@ -9,7 +9,11 @@ use serde_json_merge::Dfs;
 use serde_json_merge::Iter;
 use serde_json_merge::Merge;
 use serde_json_merge::SortKeys;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::{collections::BTreeMap, fs, str::FromStr};
 
 mod jinga;
@@ -60,7 +64,77 @@ fn group_yml_files_by_dir(files: Vec<&Utf8Path>) -> BTreeMap<Utf8PathBuf, Vec<&U
     dirs
 }
 
+
 fn main() -> Result<()> {
+    let Cli {
+        ev2,
+        environments,
+        scratch,
+        verbose,
+    } = &Cli::parse();
+
+    let ev2_path = Utf8PathBuf::from_str(ev2)?;
+    let environments_path = ev2_path.join(environments);
+    let scratch_path = ev2_path.join(scratch);
+
+    // let flags = load_flags(&ev2_path.join("flags.yml"))?;
+    // let versions = load_flags(&ev2_path.join("versions.yml"))?;
+    // let includes = load_includes(&ev2_path)?;
+
+    // add includes
+    let include_keys = load_includes_keys(&ev2_path)?;
+    println!("include_keys: {include_keys:#?}");
+
+    let environments_yml_paths = list_yml_paths(&environments_path);
+    // remove keys from yml files
+    for path in &environments_yml_paths {
+        let mut must_remove = BTreeSet::new();
+        // read yml file
+        let file = &fs::read(path).with_context(|| format!("reading file {path}"))?;
+        let mut yml: serde_yaml::Value = serde_yaml::from_slice(file)?;
+        match yml {
+            serde_yaml::Value::Mapping(ref mut map) => {
+                for key in include_keys.iter() {
+                    // map.remove(&serde_yaml::Value::String(key.to_string()));
+                    // map.remove(key);
+                    must_remove.insert(key.to_string());
+                }
+            }
+            _ => {}
+        }
+        // write yml file
+        // fs::write(path, serde_yaml::to_string(&yml)?)?;
+        if !must_remove.is_empty(){
+            // loop through all lines in file and remove and that must be removed
+            let reader = Cursor::new(file);
+            let mut new_lines = Vec::new();
+            //read lines from a files
+            let lines = reader.lines();;
+            for line in lines {
+                if let Ok(line) = line {
+                    let mut must_remove_line = false;
+                    for key in &must_remove {
+                        if line.contains(&format!("{key}:")) {
+                            must_remove_line = true;
+                            break;
+                        }
+                    }
+                    if !must_remove_line {
+                        new_lines.push(line);
+                    }
+                }
+            }
+            new_lines.push("".to_string());
+            // write lines to file
+            fs::write(path, new_lines.join("\n"))?;
+        }
+    }
+
+    Ok(())
+}
+
+
+fn main1() -> Result<()> {
     let Cli {
         ev2,
         environments,
@@ -225,6 +299,38 @@ fn load_flags(yml: &Utf8Path) -> Result<HashMap<String, serde_json::Value>> {
     Ok(flags)
 }
 
+fn load_includes_keys(ev2_path: &Utf8Path) -> Result<BTreeSet<String>> {
+    let mut keys = BTreeSet::new();
+    let paths = load_includes(ev2_path)?;
+    for path in paths.values() {
+        for path in path {
+            let value: serde_yaml::Value = serde_yaml::from_slice(
+                &fs::read(path).with_context(|| format!("reading file {path}"))?,
+            )?;
+            keys.extend(yml_keys(value)?);
+        }
+    }
+    Ok(keys)
+}
+
+fn yml_keys(value: serde_yaml::Value) -> Result<BTreeSet<String>> {
+    let mut keys = BTreeSet::new();
+    match value {
+        serde_yaml::Value::Sequence(seq) => {
+            for value in seq {
+                keys.extend(yml_keys(value)?);
+            }
+        }
+        serde_yaml::Value::Mapping(map) => {
+            for (key, _value) in map {
+                keys.insert(key.as_str().unwrap().to_string());
+            }
+        }
+        _ => {}
+    }
+    Ok(keys)
+}
+
 fn load_includes(ev2_path: &Utf8Path) -> Result<HashMap<String, Vec<Utf8PathBuf>>> {
     let include_yml = ev2_path.join("include.yml");
     let mut json: serde_json::Value = serde_yaml::from_slice(
@@ -277,6 +383,19 @@ fn remove_brackets(value: &mut serde_json::Value) -> Result<()> {
 #[cfg(test)]
 pub mod test {
     use super::*;
+
+    #[test]
+    fn test_yml_keys() -> Result<()> {
+        let yml = r#"
+        a: 1
+        b: true
+        c: "hi"
+        "#;
+        let yml: serde_yaml::Value = serde_yaml::from_str(yml)?;
+        let keys = yml_keys(yml)?.into_iter().collect::<Vec<_>>();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+        Ok(())
+    }
 
     #[test]
     fn test_remove_brackets() -> Result<()> {
